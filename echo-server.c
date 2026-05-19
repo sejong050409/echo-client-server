@@ -11,8 +11,8 @@
 int clients[MAX_CLIENTS];
 int client_count = 0;
 
-int echo_mode = 0;
-int broadcast_mode = 0;
+int echo = 0;
+int broadcast = 0;
 
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -42,16 +42,19 @@ void remove_client(int client_sock) {
     pthread_mutex_unlock(&clients_mutex);
 }
 
-void broadcast_message(char* msg, int len) {
+void broadcast_message(char* msg, int len, int sender_sock) {
     pthread_mutex_lock(&clients_mutex);
 
     for (int i = 0; i < client_count; i++) {
+        if (clients[i] == sender_sock) {
+            continue;
+        }
+
         send(clients[i], msg, len, 0);
     }
 
     pthread_mutex_unlock(&clients_mutex);
 }
-
 void* client_handler(void* arg) {
     int client_sock = *(int*)arg;
     free(arg);
@@ -72,12 +75,12 @@ void* client_handler(void* arg) {
 
         printf("client[%d]: %s\n", client_sock, buf);
 
-        if (echo_mode) {
+        if (echo) {
             send(client_sock, buf, len, 0);
         }
 
-        if (broadcast_mode) {
-            broadcast_message(buf, len);
+        if (broadcast) {
+            broadcast_message(buf, len, client_sock);
         }
     }
 
@@ -86,7 +89,7 @@ void* client_handler(void* arg) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        printf("syntax : echo-server <port> [-e|-b]\n");
+        printf("syntax : echo-server <port> [-e[-b]]\n");
         return 1;
     }
 
@@ -94,9 +97,9 @@ int main(int argc, char* argv[]) {
 
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-e") == 0) {
-            echo_mode = 1;
+            echo = 1;
         } else if (strcmp(argv[i], "-b") == 0) {
-            broadcast_mode = 1;
+            broadcast = 1;
         }
     }
 
@@ -105,9 +108,6 @@ int main(int argc, char* argv[]) {
         perror("socket");
         return 1;
     }
-
-    int opt = 1;
-    setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
